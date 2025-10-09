@@ -43,7 +43,7 @@ python demo.py
 
 ```bash
 # 1. 确保已安装 AgenticX
-pip install agenticx
+pip install agenticx==0.1.7
 
 # 2. 安装 Agent-First 扩展
 cd agent_first_agenticx
