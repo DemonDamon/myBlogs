@@ -9,7 +9,7 @@
 
 ## 1. 为什么我们需要 MegaRAG？
 
-在 RAG 领域，2024 年是 GraphRAG 爆发的一年。通过将非结构化文本转化为知识图谱，GraphRAG 解决了传统 RAG 难以处理“全局性问题（Global QA）”和“跨段落推理”的痛点。
+在 RAG（检索增强生成）领域，2024 年是 GraphRAG 爆发的一年。通过将非结构化文本转化为知识图谱（KG），GraphRAG 解决了传统 RAG 难以处理“全局性问题（Global QA）”和“跨段落推理”的痛点。
 
 然而，现有的 GraphRAG（包括 LightRAG）存在一个致命缺陷：**它们是单模态的（Text-Only）**。
 当面对 PDF、PPT、技术手册等**富视觉文档**时：
@@ -17,7 +17,7 @@
 2.  **割裂感**：“图”和“文”是分离的，KG 中没有“图片节点”，导致无法回答“根据图 3 的趋势分析...”这类问题。
 3.  **长窗口瓶颈**：虽然 Gemini/GPT-4o 支持长窗口，但直接把整本书丢进去不仅贵，而且在处理细粒度视觉细节时容易“幻觉”或“丢失注意力”。
 
-**MegaRAG**（国立台湾大学，2025.11）提出了**MMKG（Multimodal Knowledge Graph）** 方案，核心思路是：**把图片、图表也当做 KG 中的“实体（Entity）”**，并在构建和检索阶段深度融合视觉特征。
+**MegaRAG**（国立台湾大学，2025.11）提出了**MMKG（Multimodal Knowledge Graph）**方案，核心思路是：**把图片、图表也当做 KG 中的“实体（Entity）”**，并在构建和检索阶段深度融合视觉特征。
 
 ---
 
@@ -34,8 +34,8 @@ graph TD
     subgraph "Phase 1: Initial Construction"
     Doc[Document] -->|Split| P1[Page 1]
     Doc -->|Split| P2[Page 2]
-    P1 -->|MinerU| MM1[Multimodal Input<br>（Text+Image+Layout）]
-    P2 -->|MinerU| MM2[Multimodal Input<br>（Text+Image+Layout）]
+    P1 -->|MinerU| MM1[Multimodal Input<br>(Text+Image+Layout)]
+    P2 -->|MinerU| MM2[Multimodal Input<br>(Text+Image+Layout)]
     
     MM1 -->|MLLM Extract| G1[Page Graph 1]
     MM2 -->|MLLM Extract| G2[Page Graph 2]
@@ -54,14 +54,14 @@ graph TD
     style G_Final fill:#bbf,stroke:#333
 ```
 
-#### 第一步：Page-level 并行提取
-将文档按**页**切分，并行喂给 MLLM（如 GPT-4o-mini）。
+#### 第一步：Page-level 并行提取 (Initial Construction)
+将文档按**页（Page）**切分，并行喂给 MLLM（如 GPT-4o-mini）。
 - **输入**：当前页的 Text + 提取出的 Figure/Table + 完整 Page Image（保留布局）。
 - **输出**：局部实体与关系 $(E, R)_i^0$。
 - **关键创新**：**图表即实体**。例如，一张“2025 营收趋势图”会被识别为一个 Entity，并与文本中的“营收增长”Entity 建立关系。
 
-#### 第二步：基于子图检索的Refinement —— **核心 Trick**
-初步提取的 KG 往往是碎片化的，跨页关系容易丢失。MegaRAG 设计了一个巧妙的 **Refinement** 环节：
+#### 第二步：基于子图检索的精修 (Refinement) —— **核心 Trick**
+初步提取的 KG 往往是破碎的（Fragmented），跨页关系容易丢失。MegaRAG 设计了一个巧妙的 **Refinement** 环节：
 1.  **Global Merge**：将所有页的局部图合并为初始图 $\mathcal{G}^0$。
 2.  **Subgraph Retrieval**：对于第 $i$ 页，不直接喂全量图（太大了），而是根据当前页的实体，去 $\mathcal{G}^0$ 中检索一个 **Top-K 子图**。
 3.  **Context-Aware Refinement**：将“当前页内容” + “检索到的全局子图”再次喂给 MLLM。
@@ -104,11 +104,11 @@ graph LR
     style Final fill:#bbf,stroke:#333
 ```
 
-1.  **检索**：
+1.  **检索 (Retrieval)**：
     - **Graph Pathway**：检索 Top-K 相关的实体、关系及其邻居（提供结构化、全局知识）。
     - **Page Pathway**：检索 Top-M 相关的原始页面图片（提供原始视觉细节、布局信息）。
 
-2.  **生成**：
+2.  **生成 (Generation)**：
     - **Stage 1 (Intermediate)**：
         - 这里的 Prompt 让模型只看 **KG** 生成一个“逻辑推导版答案”。
         - 同时让模型只看 **Page Images** 生成一个“视觉感知版答案”。
@@ -119,17 +119,92 @@ graph LR
 
 ## 3. 关键算法与数学表述
 
-### 3.1 页面级图生成
+### 3.1 页面级图生成（核心代码逻辑）
 定义文档第 $i$ 页的输入为 $\mathrm{P}_i = \{\mathrm{T}_i, \mathrm{F}_i, \mathrm{B}_i, \mathrm{I}_i\}$，其中 T, F, B, I 分别代表文本、Figure、Table 和完整 Page Image。
 图生成函数 $G(\cdot)$ 为：
 $$ (\mathrm{E}, \mathrm{R})_i^0 = G(\mathrm{P}_i) $$
 这里 MLLM 被 Prompt 引导去识别 Text-to-Text, Text-to-Image 甚至 Image-to-Image 的关系。
 
-### 3.2 Refinement 过程
+**伪代码实现：**
+```python
+def initial_graph_construction(pages):
+    all_entities = []
+    all_relations = []
+    
+    # 1. Page-level 并行提取
+    for page in pages:
+        # 输入：Text + Cropped Figures + Full Page Image
+        multimodal_input = {
+            "text": page.text,
+            "images": [page.full_image] + page.figures
+        }
+        
+        # MLLM 调用：提取实体和关系
+        # Prompt 强调：将图表视为独立实体，并寻找其与文本的关系
+        response = mllm_call(
+            model="gpt-4o-mini",
+            prompt=INITIAL_CONSTRUCTION_PROMPT,
+            input=multimodal_input
+        )
+        
+        # 解析输出：获得当前页的局部图
+        entities, relations = parse_response(response)
+        all_entities.extend(entities)
+        all_relations.extend(relations)
+        
+    # 2. 全局合并 (Global Merge)
+    # 根据实体名称和类型进行去重与合并
+    initial_kg = merge_graph(all_entities, all_relations)
+    return initial_kg
+```
+
+### 3.2 Refinement 过程（核心代码逻辑）
 这是 MegaRAG 的精髓。为了解决 $\mathcal{G}^0$ 的不完整性，定义 Refinement 函数 $R(\cdot)$：
 $$ (\mathrm{E}, \mathrm{R})_i^1 = R(\mathrm{P}_i, \mathcal{G}_i^0) $$
 其中 $\mathcal{G}_i^0$ 是从全局图 $\mathcal{G}^0$ 中检索出的、与当前页 $\mathrm{P}_i$ 最相关的子图。
 > **Insight**：这实际上是一种 **Retrieval-Augmented Construction (RAC)**。在构建 KG 的过程中，就利用 RAG 的思想去检索已有的知识，从而辅助当前的构建。
+
+**伪代码实现：**
+```python
+def graph_refinement(initial_kg, pages):
+    refined_entities = []
+    refined_relations = []
+    
+    # 构建向量索引，用于检索子图
+    kg_index = build_vector_index(initial_kg)
+    
+    for page in pages:
+        # 1. 检索上下文子图 (Subgraph Retrieval)
+        # 提取当前页的关键实体名称作为 Query
+        page_entities = extract_entity_names(page) 
+        
+        # 在初始大图中检索 Top-K 相关的实体和关系
+        # 这一步是为了让 MLLM 看到"其他页"可能存在的关联信息
+        subgraph = kg_index.retrieve(
+            query=page_entities, 
+            top_k=120  # 论文经验值
+        )
+        
+        # 2. 再次调用 MLLM 进行精修 (Refinement)
+        # 输入：当前页内容 + 检索到的全局子图
+        response = mllm_call(
+            model="gpt-4o-mini",
+            prompt=REFINEMENT_PROMPT,
+            input={
+                "page_content": page,
+                "retrieved_subgraph": subgraph_to_text(subgraph)
+            }
+        )
+        
+        # MLLM 会输出新增的关系 (尤其是跨页关系)
+        new_entities, new_relations = parse_response(response)
+        refined_entities.extend(new_entities)
+        refined_relations.extend(new_relations)
+        
+    # 合并精修后的结果
+    final_kg = merge_graph(refined_entities, refined_relations)
+    return final_kg
+```
 
 ---
 
@@ -165,4 +240,3 @@ MegaRAG 的核心贡献在于它打破了 RAG 中“文本”与“视觉”的�
 - *MegaRAG: Multimodal Knowledge Graph-Based Retrieval Augmented Generation, 2025.11*
 - *GraphRAG: From Local to Global, Microsoft Research*
 - *MinerU: An Open-Source Solution for Precise Document Content Extraction*
-
