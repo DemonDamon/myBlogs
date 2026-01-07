@@ -1,4 +1,4 @@
-# 从 RLVR 到 RLPR：深度强化学习如何引爆 LLM 的推理潜能？
+# 从 RLVR 到 RLPR：深度强化学习如何引爆 LLM 的推理潜能？（修正版）
 
 > 强化学习已成为 LLM 推理进化的核心引擎。然而，传统 RLVR 往往困于数学、代码等“自带验证器”的封闭领域。本文将深度解析如何从 1-shot RLVR 的数据极致利用，演进到 RLPR 借“模型内在概率”打破验证器枷锁的新范式，并结合 `verl` 框架拆解其工程落地细节。
 
@@ -73,10 +73,36 @@ $$
 
 然后用 PPO/GRPO 常见的“比率 + 优势”形式去更新策略，并叠加前文提到的 **KL、熵、weight decay** 等正则项来稳住训练。直观上就是：**同一组里得分更高的样本被鼓励“更常生成”，得分更低的样本被压下去**。
 
-至于 **KL散度惩罚 / 熵正则 / WD** 三者关系：它们都是“让 GRPO 更新别走偏”的不同正则，解决的风险点不一样、互补而非替代——
+至于 **KL散度惩罚 / 熵正则 / WD** 三者关系：它们都是"让 GRPO 更新别走偏"的不同正则，解决的风险点不一样、互补而非替代——
 - **KL散度惩罚**：约束当前策略别离参考策略/旧策略太远，防止一步更新把分布推崩（过度漂移）。
 - **熵正则**：鼓励输出分布保持一定随机性，防止策略过早坍塌到单一模板，维持探索与多样性（尤其对后期泛化/数据多样性很关键）。
-- **WD（Weight Decay）**：纯参数层面的 L2 正则，偏“防过拟合/控参数范数”，不直接关心输出分布，但能改善训练数值稳定性与泛化。
+- **WD（Weight Decay）**：纯参数层面的 L2 正则，偏"防过拟合/控参数范数"，不直接关心输出分布，但能改善训练数值稳定性与泛化。
+
+#### ⚠️ KL 实现的隐蔽陷阱：K1 vs K3，in-Reward vs in-Loss
+
+Bengio 团队的最新研究《A Comedy of Estimators》揭示了一个被广泛忽视的工程细节：**KL 惩罚项放在哪里、用什么估算器，会显著影响模型的泛化能力**。
+
+在实际操作中，我们无法直接计算高维序列空间的 KL 散度，只能通过采样估算。这里涉及两个关键选择：
+1. **估算器（Estimator）**：用朴素的 Log-ratio（K1）还是 PPO/GRPO 中常用的低方差近似项（K3，由 Schulman 提出）？
+2. **位置（Placement）**：作为惩罚项从 Reward 中扣除（in-Reward），还是作为正则项直接加入 Loss（in-Loss）？
+
+目前绝大多数开源库（VeRL、OpenRLHF、SkyRL 等）为了实现方便，默认选择 **K3 in Loss**。但研究表明这是一个有偏的选择：
+
+| 配置 | 梯度偏差 | 训练稳定性 | 推荐度 |
+|------|---------|-----------|--------|
+| K1 in Reward | ✅ 无偏 | ✅ 稳定 | ⭐⭐⭐ **最优解** |
+| K3 in Loss | ❌ 有偏 | ✅ 稳定 | ⚠️ 主流但非最优 |
+| K1 in Loss | ✅ 无偏 | ⚠️ 高方差 | 需调参 |
+| K3 in Reward | ❌ 有偏 | ❌ 崩溃 | 🚫 避免 |
+
+**为什么 K3 in Loss 是有偏的？** 当我们把 K3 放入 Loss 直接反向传播时，推导出的梯度期望包含错误的系数项，实际上是在优化**前向 KL 散度**而非反向 KL。这导致模型倾向于 Mode-covering（覆盖参考模型的分布），而非我们期望的 Mode-seeking（寻找高奖励模式）。
+
+**实验证据**：在 Qwen2.5-7B 和 Llama-3.1-8B 上的 MATH 数据集实验中，K1 in Reward 相比 K3 in Loss：
+- 在域内（MATH）任务上持平或略优
+- 在域外（Physics, Chemistry, Biology）任务上带来约 **19% 的相对提升**
+- 在异步训练（Async RL）架构下依然稳健，而其他配置容易崩溃
+
+这说明**无偏的梯度估计能让模型学到更本质的推理逻辑**，而不是死记硬背训练集的分布。
 
 加入熵奖励（实现上常等价为在 loss 中加入 entropy loss），得到最大熵目标：
 
@@ -220,8 +246,18 @@ final_score = (1 - self.format_coefficient) * score_delta + self.format_coeffici
 
 ### 6.3. 工程落地建议
 * 优先保证 **Format Reward** 的严苛，它是推理能力的基石。
-* 在训练初期，关注 **Entropy Loss**，防止模型过早陷入“思维定式”。
+* 在训练初期，关注 **Entropy Loss**，防止模型过早陷入"思维定式"。
 * 使用 `verl` 等框架时，利用其 **Ray 调度** 和 **vLLM 混合部署**，可大幅提升采样效率，让 RLVR 的快速迭代成为可能。
+* ⚠️ **KL 配置的"免费午餐"**：别再盲目信任默认配置！把 KL 惩罚项从 Loss 移回 Reward，用最简单的 K1 估算器。具体修改如下：
+
+| 框架 | 配置项 | 推荐值 |
+|------|--------|--------|
+| VeRL | `kl_estimator` | `"k1"` |
+| VeRL | `use_kl_in_reward` | `True` |
+| OpenRLHF | `kl_estimator` | `"k1"` |
+| OpenRLHF | `use_kl_in_reward` | `True` |
+
+这个简单的配置变更可能为你的模型带来显著的 OOD 泛化提升——特别是当你关心推理能力向非训练领域迁移时。
 
 
 **参考文献**：
@@ -231,3 +267,4 @@ final_score = (1 - self.format_coefficient) * score_delta + self.format_coeffici
 4. *Sutton et al., "Policy Gradient Methods for Reinforcement Learning with Function Approximation", NeurIPS 2000.*
 5. *Haarnoja et al., "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor", ICML 2018.*
 6. https://docs.easy-dataset.com/jin-jie-shi-yong/images-and-media
+7. *Bengio et al., "A Comedy of Estimators: On KL Regularization in RL Training of LLMs", arXiv:2512.21852, 2025.*
