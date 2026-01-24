@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520">
+  <defs>
+    <style>
+      .t{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",Arial,sans-serif;fill:#0b1220}
+      .h{font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",Arial,sans-serif;font-weight:700;fill:#0b1220}
+      .box{rx:12;ry:12;stroke:#1f2937;stroke-width:1.5;fill:#ffffff}
+      .step{rx:12;ry:12;stroke:#0f172a;stroke-width:1.2;fill:#f8fafc}
+      .a{stroke:#111827;stroke-width:1.4;fill:none;marker-end:url(#m)}
+      .mut{fill:#374151}
+    </style>
+    <marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111827"/>
+    </marker>
+  </defs>
+
+  <rect x="24" y="24" width="912" height="472" class="box" fill="#ffffff"/>
+  <text x="48" y="60" class="h">Semantic Search：从代码到可检索向量（7 步）</text>
+  <text x="48" y="84" class="t mut">语义检索把“意义”提前算好：离线嵌入 + 向量数据库 + 在线相似度搜索</text>
+
+  <rect x="56" y="120" width="360" height="62" class="step"/>
+  <text x="76" y="148" class="h">1. 同步工作区文件</text>
+  <text x="240" y="148" class="t mut">保持索引最新</text>
+
+  <rect x="56" y="200" width="360" height="62" class="step"/>
+  <text x="76" y="228" class="h">2. 按函数/类拆分代码块</text>
+  <text x="262" y="228" class="t mut">更稳的语义单元</text>
+
+  <rect x="56" y="280" width="360" height="62" class="step"/>
+  <text x="76" y="308" class="h">3. 计算 embedding（向量）</text>
+  <text x="290" y="308" class="t mut">数学指纹</text>
+
+  <rect x="56" y="360" width="360" height="62" class="step"/>
+  <text x="76" y="388" class="h">4. 存入向量数据库</text>
+  <text x="256" y="388" class="t mut">可扩展相似度检索</text>
+
+  <path class="a" d="M 436 151 L 496 151"/>
+  <path class="a" d="M 436 231 L 496 231"/>
+  <path class="a" d="M 436 311 L 496 311"/>
+  <path class="a" d="M 436 391 L 496 391"/>
+
+  <rect x="516" y="120" width="388" height="62" class="step"/>
+  <text x="536" y="148" class="h">5. 查询向量化</text>
+  <text x="648" y="148" class="t mut">同一套嵌入模型</text>
+
+  <rect x="516" y="200" width="388" height="62" class="step"/>
+  <text x="536" y="228" class="h">6. 计算相似度并召回 Top-K</text>
+  <text x="742" y="228" class="t mut">向量距离</text>
+
+  <rect x="516" y="280" width="388" height="62" class="step"/>
+  <text x="536" y="308" class="h">7. 返回片段 + 位置</text>
+  <text x="702" y="308" class="t mut">按相关性排序</text>
+
+  <rect x="516" y="360" width="388" height="62" class="step"/>
+  <text x="536" y="388" class="h">结果：概念级匹配</text>
+  <text x="676" y="388" class="t mut">“导航栏”也能命中 Header</text>
+</svg>

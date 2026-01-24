@@ -1,0 +1,86 @@
+---
+description: Project-specific Python coding standards - English comments, author attribution, no relative imports
+globs: **/*.py
+alwaysApply: false
+---
+
+# Python Coding Standards
+
+Project-specific Python coding standards. For general style conventions, use `ruff` or `black` for formatting.
+
+## CRITICAL RULES (Must Follow)
+
+**These rules MUST be applied to ALL Python code:**
+
+1. **All comments and docstrings MUST be in English only** - No Chinese or other languages
+2. **No emoji in code comments, docstrings, or code** - Emoji should only appear in user-facing strings (print statements)
+3. **Every file MUST include `Author: xxx`** in the module docstring at the top
+4. **Never use relative imports** - Always use full package names
+
+**Required file header format:**
+```python
+#!/usr/bin/env python3
+"""Module description here.
+
+Author: xxx
+"""
+```
+
+## Examples
+
+### Correct File Header
+```python
+#!/usr/bin/env python3
+"""Number guessing game module.
+
+A simple number guessing game with multiple difficulty levels.
+
+Author: xxx
+"""
+
+import random
+import json
+```
+
+### Correct Comments and Docstrings
+```python
+# GOOD - English comments only
+def calculate_total(items: list[float]) -> float:
+    """Calculate the total price of items.
+
+    Args:
+        items: List of item prices.
+
+    Returns:
+        Total price as a float.
+    """
+    return sum(items)
+
+# BAD - Chinese comments
+def calculate_total(items):  # 计算总价
+    return sum(items)  # 返回总和
+```
+
+### Correct Imports
+```python
+# GOOD - Full package names
+from agenticx.collaboration import workforce
+from agenticx.server import api_routes
+
+# BAD - Relative imports
+from . import sibling_module
+from ..parent import something
+```
+
+### No Emoji in Code
+```python
+# GOOD - No emoji in code
+print('Game started!')
+status_message = 'Congratulations!'
+
+# BAD - Emoji in code/comments
+print('🎮 Game started!')  # Emoji in code
+status_message = '🎉 Congratulations!'  # Emoji in variable
+```
+
+**Note:** Emoji are allowed only in user-facing print statements for better UX, but not in comments, docstrings, or variable values.

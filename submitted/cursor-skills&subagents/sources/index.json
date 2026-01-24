@@ -1,0 +1,47 @@
+[
+  {
+    "name": "agent-overview",
+    "html": "sources/html/agent-overview.html",
+    "text": "sources/text/agent-overview.txt"
+  },
+  {
+    "name": "commands",
+    "html": "sources/html/commands.html",
+    "text": "sources/text/commands.txt"
+  },
+  {
+    "name": "hooks",
+    "html": "sources/html/hooks.html",
+    "text": "sources/text/hooks.txt"
+  },
+  {
+    "name": "mentions",
+    "html": "sources/html/mentions.html",
+    "text": "sources/text/mentions.txt"
+  },
+  {
+    "name": "rules",
+    "html": "sources/html/rules.html",
+    "text": "sources/text/rules.txt"
+  },
+  {
+    "name": "semantic-search",
+    "html": "sources/html/semantic-search.html",
+    "text": "sources/text/semantic-search.txt"
+  },
+  {
+    "name": "skills",
+    "html": "sources/html/skills.html",
+    "text": "sources/text/skills.txt"
+  },
+  {
+    "name": "subagents",
+    "html": "sources/html/subagents.html",
+    "text": "sources/text/subagents.txt"
+  },
+  {
+    "name": "third-party-hooks",
+    "html": "sources/html/third-party-hooks.html",
+    "text": "sources/text/third-party-hooks.txt"
+  }
+]
