@@ -1,6 +1,44 @@
+# 系统文件
 **/.DS_Store
-unsubmitted/
-BasicWebCrawler/
+.DS_Store
+
+# IDE 配置
 .vscode/
 .cursor/
 .trae/
+.claude/
+
+# 大文件类型
+*.pdf
+*.gif
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# 图片文件（博客不需要存图片）
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.webp
+*.ico
+*.bmp
+
+# 已排除目录
+unsubmitted/
+BasicWebCrawler/
+
+# 临时目录
+context7介绍/
+kiro介绍/
+clawdbot/
+claudecode研究/
+everything-claude-code/
+cursor的plan模式调研/
