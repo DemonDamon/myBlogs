@@ -1,0 +1,19 @@
+[主题与布局设想]
+水平流布局，CoPaw 系统架构图，展示从用户端到核心引擎的完整流程。从左到右流向，背景纯白，强调逻辑清晰度。
+
+[视觉模块详解]
+1. 左侧：用户交互层 - 6 个渠道入口（钉钉、飞书、QQ、Discord、iMessage、Console），用圆角矩形 + 各平台 icon 表示
+2. 中间偏左：Web 控制台层 - 浏览器界面（http://127.0.0.1:8088），包含聊天、频道管理、定时任务、技能开关、模型配置等 8 个功能模块
+3. 核心层（最大矩形突出）：AgentScope 智能体引擎
+   - 上方：Prompt 系统（SOUL.md → AGENTS.md → PROFILE.md → MEMORY.md → HEARTBEAT.md）
+   - 中间：Agent 核心（对话处理、工具调用、上下文压缩）
+   - 下方：ReMe 记忆引擎（向量语义搜索 ×0.7 + BM25 全文检索 ×0.3 = 混合检索）
+4. 右侧上方：技能系统（cron、file_reader、news、himalaya、pdf/docx/pptx/xlsx、browser_visible）
+5. 右侧下方：部署选项（本地 pip install / 魔搭创空间云端）
+6. 底部：数据存储层 - ~/.copaw/ 目录（config.json、MEMORY.md、memory/*.md、active_skills/、Chroma 向量数据库）
+
+[风格与配色方案]
+科技蓝主色调，扁平化设计，矢量图风格。渠道层浅蓝，AgentScope 核心深蓝，ReMe 记忆引擎紫色，技能系统绿色，存储层灰色。
+
+[技术参数建议]
+文字必须清晰可辨。保持文字与背景的高对比度。16:9 比例。2K 分辨率。标准架构图符号，扁平化矢量风格。

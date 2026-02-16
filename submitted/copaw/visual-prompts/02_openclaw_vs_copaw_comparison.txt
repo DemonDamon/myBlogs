@@ -1,0 +1,35 @@
+[主题与布局设想]
+左右对称布局，技术对比信息图。左右分栏，背景纯白，强调对比关系。中间用竖线分隔。
+
+[视觉模块详解]
+左侧：OpenClaw
+- Logo + 标题：OpenClaw
+- 标签：本地优先 · 完全开源 · MIT 协议
+- 技术栈：Node.js ≥ 22.12 / Pi 系列库 / SQLite
+- 渠道：12+ 渠道（WhatsApp、Telegram、Slack、Discord、Signal…）
+- 记忆：SQLite + 本地文件，向量检索
+- 技能：可编程（JS/TS），ClawHub 生态
+- 部署：npm install -g openclaw，本地单进程
+
+右侧：CoPaw
+- Logo + 标题：CoPaw（阿里云通义）
+- 标签：云原生 · 极简安装 · 数据本地
+- 标注：记忆与 Prompt 设计受 OpenClaw 启发
+- 技术栈：Python ≥ 3.10 / AgentScope + ReMe / Chroma
+- 渠道：6 渠道（钉钉、飞书、QQ、Discord、iMessage、Console），钉钉飞书全模态
+- 记忆：向量（0.7）+ BM25（0.3）混合检索，Markdown 文件存储
+- 技能：声明式（SKILL.md），部分来自 OpenClaw 和 Anthropic
+- 部署：pip install copaw / 魔搭一键云端
+
+底部：关键差异总结（横向对比条）
+- 语言：Node.js vs Python
+- 渠道优势：海外广度 vs 国内深度（多模态）
+- 记忆检索：单路向量 vs 混合检索
+- 部署方式：仅本地 vs 本地 + 云端
+- 开源程度：完全开源 vs 部分借鉴开源
+
+[风格与配色方案]
+OpenClaw 用蓝色系，CoPaw 用橙色/绿色系。底部对比条用中性灰。扁平化设计，信息密集但排版克制。
+
+[技术参数建议]
+文字必须清晰可辨。高对比度。16:9 比例。2K 分辨率。矢量信息图风格，专业技术对比图。
