@@ -9,7 +9,7 @@
 2026 年 2 月，DeepSeek V4 正在灰度测试中。泄露的基准测试数据显示，它在 SWE-bench Verified 上达到 83.7%，超越了 Claude Opus 4.5（80.9%）和 GPT-5.2（80%）。上下文长度从 128K 扩展至 1M，百万级上下文成为现实。
 
 *![DeepSeek V4 技术演进路线图](images/07_DeepSeek_技术演进时间线.png)*
-*DeepSeek 技术演进路线（2024.12 — 2026.02）：从 MoE → MLA → DSA → mHC → Engram*
+*DeepSeek 技术演进路线（2024.12 — 2026.02）：从 MoE → MLA → DSA → mH5C → Engram*
 <!-- 🎨 视觉描述提示词: visual-prompts/07_DeepSeek_技术演进时间线.txt → 请在 lovart.ai 用 NanoBanana Pro 生成后替换 -->
 
 但 V4 的意义远不止于性能提升。野村证券在报告中指出：**"V4 不会重现 V3 发布时的全球算力恐慌，其核心价值在于通过底层架构创新推动 AI 应用商业化落地。"**
