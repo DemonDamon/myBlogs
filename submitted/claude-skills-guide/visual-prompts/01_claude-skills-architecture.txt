@@ -1,0 +1,66 @@
+# 视觉提示词：Claude Agent Skills 渐进式披露架构图
+
+## 图片用途
+博客文章"Claude Agent Skills 深度解析"的核心架构配图，展示三层渐进式加载（Progressive Disclosure）机制
+
+## 风格要求
+- 技术信息图风格（Information Design）
+- 深色背景（#1A1A2E 或 #0D1117），对比鲜明
+- Anthropic品牌色：主色橙红 #FF6B35，辅色紫罗兰 #7B61FF
+- 字体清晰可读，中英文混合
+- 箭头方向自上而下，表示"用户请求 → 逐层加载"的流程
+
+## 内容布局
+
+### 标题区（顶部）
+大标题：「Claude Agent Skills 渐进式披露架构」
+副标题：Progressive Disclosure - 按需加载，Token 成本可控
+
+### 主体：三列对比结构
+
+**左列（Level 1 - 元数据层）**
+- 标签：Level 1: Metadata
+- 中文：「发现层」
+- 图标：🔍 眼睛图标
+- 颜色：绿色 #00C853
+- 内容框：
+  name: skill-name
+  description: 何时使用...
+- Token成本标注：~100 tokens/Skill
+- 时机：启动时加载，始终在System Prompt
+
+**中列（Level 2 - 指令层）**
+- 标签：Level 2: Instructions  
+- 中文：「激活层」
+- 图标：⚡ 闪电图标
+- 颜色：橙色 #FF6B35
+- 内容框：
+  SKILL.md 正文
+  流程 / 边界 / 验收
+- Token成本标注：< 5,000 tokens
+- 时机：匹配到相关请求时加载
+
+**右列（Level 3 - 资源层）**
+- 标签：Level 3+: Resources & Code
+- 中文：「执行层」
+- 图标：🛠️ 工具图标
+- 颜色：蓝色 #448AFF
+- 内容框：
+  scripts/ ← 执行不入Context
+  references/ ← 按需读取
+  assets/ ← 静态资源
+- Token成本标注：按需加载，无上限
+- 时机：SKILL.md指引需要时
+
+### 底部：流程箭头
+用户请求 → 匹配发现层 → 命中激活层 → 执行需要时访问资源层
+
+### 右侧边栏：对比数据
+- 传统方案（全量加载）：3000+ tokens 常驻
+- Skills方案：仅100 tokens/Skill（未激活）
+- 节省：95%+ 上下文成本
+
+## 图片规格
+- 尺寸：1200×800px 或 1600×900px
+- 格式：PNG或JPG
+- 适合：博客配图、技术文档插图

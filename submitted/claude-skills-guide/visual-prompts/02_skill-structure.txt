@@ -1,0 +1,79 @@
+# 视觉提示词：SKILL.md 文件结构与目录组织示意图
+
+## 图片用途
+展示一个完整Skill的目录结构和SKILL.md文件格式，作为技术参考配图
+
+## 风格要求
+- VS Code / 代码编辑器风格的截图感
+- 深色主题（Dark Dracula或One Dark Pro配色）
+- 左侧文件树 + 右侧代码内容
+- 干净、专业的技术风格
+
+## 左侧：文件树结构
+
+```
+my-skill/                    📁 Skill目录（名称即技能名）
+├── SKILL.md                 📄 必需：核心指令 + 元数据
+├── references/              📁 可选：参考资料（按需加载）
+│   ├── checklist.md         📄 核查清单
+│   └── templates.md         📄 输出模板
+├── scripts/                 📁 可选：可执行脚本
+│   └── process.py           🐍 Python脚本
+└── assets/                  📁 可选：静态资源
+    └── schema.json          📄 数据模式
+```
+
+文件树标注颜色：
+- SKILL.md：橙色高亮（必需）
+- references/：蓝色（可选，按需加载）
+- scripts/：绿色（可选，执行不入Context）
+- assets/：灰色（可选）
+
+## 右侧：SKILL.md代码展示
+
+展示标准格式的SKILL.md，带语法高亮：
+
+```yaml
+---                                          # YAML frontmatter开始
+name: code-review                           # 必填：Skill标识（小写+连字符）
+description: |                              # 必填：触发路由规则
+  执行代码审查，检查安全性、性能与规范。
+  用于 PR 审查、merge request、代码质量检测。
+  触发词：代码审查、review、PR、代码质量
+license: Apache-2.0                         # 可选：许可证
+metadata:                                   # 可选：附加元数据
+  author: example-team
+  version: "2.0"
+allowed-tools: Read Grep Glob              # 可选：收敛执行面
+---                                         # YAML frontmatter结束
+
+# Code Review Skill                        # Markdown正文开始
+
+## 输入要求
+- 代码diff或文件路径
+- 审查重点（可选）
+
+## 审查流程
+1. 读取代码变更
+2. 检查安全漏洞
+3. 分析性能问题
+4. 评估可维护性
+5. 输出结构化报告
+
+## 验收标准
+- 输出包含：严重/警告/建议三级分类
+- 每项问题附带修复建议
+- 必须标注审查是否通过
+
+详细参考：[审查清单](references/checklist.md)
+```
+
+## 标注说明
+- YAML frontmatter区域：黄色背景框，标注"启动时加载，~50 tokens"
+- Markdown正文区域：白色背景框，标注"触发时加载，<5000 tokens"
+- references引用：蓝色下划线，标注"需要时才读取"
+
+## 图片规格
+- 尺寸：1400×900px
+- 格式：PNG
+- 风格：技术文档截图风格
