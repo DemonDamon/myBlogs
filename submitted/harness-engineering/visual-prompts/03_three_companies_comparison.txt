@@ -1,0 +1,48 @@
+[主题与布局设想]
+展示 Anthropic、OpenAI、LangChain 三家 Harness Engineering 方案的对比信息图。采用三列并排布局，每列代表一家公司的方案。顶部有总标题，底部有共性与差异总结。背景为深色。
+
+[视觉模块详解]
+1. **顶部标题栏**: 白色大字"三家 Harness 方案对比"，副标题"不同路径，殊途同归"
+
+2. **第一列 - Anthropic**: 紫色调(#7C3AED)
+   - 公司 Logo 区域：紫色背景，白字"Anthropic"
+   - 核心理念框："双阶段框架"
+   - 关键特征列表：
+     · "Initializer + Coding Agent"
+     · "feature_list.json 功能追踪"
+     · "每会话一个功能"
+     · "Git + 进度文件持久化"
+   - 验证方式："Puppeteer E2E 测试"
+   - 适用场景："全栈 Web App 开发"
+
+3. **第二列 - OpenAI**: 绿色调(#10B981)
+   - 公司 Logo 区域：绿色背景，白字"OpenAI"
+   - 核心理念框："仓库级环境设计"
+   - 关键特征列表：
+     · "AGENTS.md 作为目录"
+     · "渐进式披露"
+     · "机械强制执行（Linter + CI）"
+     · "AI Slop 清理 Agent"
+   - 验证方式："自定义 Linter + CI"
+   - 实验数据："100 万行 / 5 个月 / 零人工"
+
+4. **第三列 - LangChain**: 蓝色调(#3B82F6)
+   - 公司 Logo 区域：蓝色背景，白字"LangChain"
+   - 核心理念框："开源 Harness 框架"
+   - 关键特征列表：
+     · "Middleware 中间件系统"
+     · "Trace 分析驱动优化"
+     · "PreCompletionChecklist"
+     · "LoopDetectionMiddleware"
+   - 验证方式："Trace + 自我验证"
+   - 量化结果："52.8% → 66.5%（Terminal Bench）"
+
+5. **底部共性总结**: 黄色(#F59E0B)横幅
+   - "共同点：不换模型 · 优化环境 · 验证闭环 · 状态持久化"
+   - "差异：Anthropic 偏工程实践 / OpenAI 偏组织设计 / LangChain 偏开源框架"
+
+[风格与配色方案]
+深色背景(#111827)，三列分别用紫/绿/蓝三色主题区分。信息密度适中，文字简洁。卡片式设计，每列一张卡片。
+
+[技术参数建议]
+文字必须清晰可辨。保持文字与背景的高对比度。建议 16:9 比例。2K 分辨率。使用标准流程图符号。矢量图风格，扁平化设计，专业学术论文图表风格。
