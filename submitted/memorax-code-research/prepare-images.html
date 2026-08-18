@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Prepare Images</title></head>
+<body>
+<div id="status">Loading images...</div>
+<script>
+(async function() {
+  const images = [
+    { name: 'architecture', url: 'http://127.0.0.1:9876/images/architecture_small.png', alt: 'MemoraX Code 系统架构' },
+    { name: 'memory-lifecycle', url: 'http://127.0.0.1:9876/images/memory-lifecycle_small.png', alt: '记忆生命周期' },
+    { name: 'data-flow', url: 'http://127.0.0.1:9876/images/data-flow_small.png', alt: '记忆检索与写回流程' }
+  ];
+
+  const results = [];
+  for (const img of images) {
+    try {
+      const resp = await fetch(img.url);
+      const blob = await resp.blob();
+      const reader = new FileReader();
+      const dataUrl = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      results.push({ name: img.name, alt: img.alt, dataUrl: dataUrl, size: dataUrl.length });
+    } catch(e) {
+      results.push({ name: img.name, alt: img.alt, error: e.message });
+    }
+  }
+
+  // Store in window.name for cross-navigation transfer
+  window.name = JSON.stringify(results);
+  document.getElementById('status').textContent = 'Done! ' + results.length + ' images loaded. Sizes: ' + results.map(r => r.name + ':' + (r.size || r.error)).join(', ');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix semantica: <https://semantica.dev/ns#> .
+
+<acme_corp> a <Organization> ;
+    semantica:text "acme_corp" ;
+    semantica:confidence 1.0 .
+
+<alice_chen> a <Person> ;
+    semantica:text "alice_chen" ;
+    semantica:confidence 1.0 .
+
+<bob_wang> a <Person> ;
+    semantica:text "bob_wang" ;
+    semantica:confidence 1.0 .
+
+<contract_001> a <Contract> ;
+    semantica:text "contract_001" ;
+    semantica:confidence 1.0 .
+
+<contract_002> a <Contract> ;
+    semantica:text "contract_002" ;
+    semantica:confidence 1.0 .
+
+<c2a3780a-099c-498c-a4d8-0d3d779c43ae> a <decision> ;
+    semantica:text "Patient P-4821: warfarin + amiodarone co-prescribed" ;
+    semantica:confidence 1.0 .
+
+<category_drug_interaction_check> a <category> ;
+    semantica:text "category_drug_interaction_check" ;
+    semantica:confidence 1.0 .
+
+<5d34b8b0-aa21-44b7-bd20-c906dacec1bc> a <decision> ;
+    semantica:text "INR monitoring plan for P-4821" ;
+    semantica:confidence 1.0 .
+
+<category_dosage_adjustment> a <category> ;
+    semantica:text "category_dosage_adjustment" ;
+    semantica:confidence 1.0 .
+
+<32d37cd4-bb5e-48f0-b378-66649e810a4b> a <decision> ;
+    semantica:text "Follow-up visit for P-4821 after dose change" ;
+    semantica:confidence 1.0 .
+
+<category_followup_schedule> a <category> ;
+    semantica:text "category_followup_schedule" ;
+    semantica:confidence 1.0 .
+
+<alice_chen> <works_for> <acme_corp> .
+<bob_wang> <works_for> <acme_corp> .
+<acme_corp> <party_to> <contract_001> .
+<bob_wang> <reviewed> <contract_001> .
+<acme_corp> <party_to> <contract_002> .
+<c2a3780a-099c-498c-a4d8-0d3d779c43ae> <belongs_to> <category_drug_interaction_check> .
+<5d34b8b0-aa21-44b7-bd20-c906dacec1bc> <belongs_to> <category_dosage_adjustment> .
+<32d37cd4-bb5e-48f0-b378-66649e810a4b> <belongs_to> <category_followup_schedule> .
+<c2a3780a-099c-498c-a4d8-0d3d779c43ae> <CAUSED> <5d34b8b0-aa21-44b7-bd20-c906dacec1bc> .
+<5d34b8b0-aa21-44b7-bd20-c906dacec1bc> <INFLUENCED> <32d37cd4-bb5e-48f0-b378-66649e810a4b> .

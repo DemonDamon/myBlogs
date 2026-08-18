@@ -1,0 +1,257 @@
+============================================================
+Case 1: 上下文图谱 —— 节点/边/多跳遍历/时间快照
+============================================================
+[图规模] nodes=5, edges=5
+[两跳遍历] acme_corp 2 跳邻居 (0.012 ms):
+  [{'id': 'contract_001', 'type': 'Contract', 'content': 'contract_001', 'relationship': 'party_to', 'weight': 1.0, 'hop': 1}, {'id': 'contract_002', 'type': 'Contract', 'content': 'contract_002', 'relationship': 'party_to', 'weight': 1.0, 'hop': 1}]
+[时间快照] 2024-06-01 视角: nodes=5
+
+============================================================
+Case 2: 决策智能 —— 医疗联用处方因果链 (推文同款 case)
+============================================================
+[决策ID] d1=c2a3780a-099c-49... d2=5d34b8b0-aa21-44... d3=32d37cd4-bb5e-48...
+[因果链] d1 --CAUSED--> d2 --INFLUENCED--> d3 已建立
+[trace_decision_chain(d3)] 结果:
+[
+  {
+    "hops": [
+      {
+        "from": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+        "from_scenario": "INR monitoring plan for P-4821",
+        "to": "32d37cd4-bb5e-48f0-b378-66649e810a4b",
+        "to_scenario": "Follow-up visit for P-4821 after dose change",
+        "type": "INFLUENCED",
+        "edge_weight": 1.0
+      }
+    ],
+    "hop_count": 1,
+    "confidence_decay": 1.0,
+    "weakest_link": {
+      "from": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+      "from_scenario": "INR monitoring plan for P-4821",
+      "to": "32d37cd4-bb5e-48f0-b378-66649e810a4b",
+      "to_scenario": "Follow-up visit for P-4821 after dose change",
+      "type": "INFLUENCED",
+      "edge_weight": 1.0
+    },
+    "distance_band": "direct",
+    "interpretation": "Direct influence with confidence 1.00."
+  },
+  {
+    "hops": [
+      {
+        "from": "c2a3780a-099c-498c-a4d8-0d3d779c43ae",
+        "from_scenario": "Patient P-4821: warfarin + amiodarone co-prescribed",
+        "to": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+        "to_scenario": "INR monitoring plan for P-4821",
+        "type": "CAUSED",
+        "edge_weight": 1.0
+      },
+      {
+        "from": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+        "from_scenario": "INR monitoring plan for P-4821",
+        "to": "32d37cd4-bb5e-48f0-b378-66649e810a4b",
+        "to_scenario": "Follow-up visit for P-4821 after dose change",
+        "type": "INFLUENCED",
+        "edge_weight": 1.0
+      }
+    ],
+    "hop_count": 2,
+    "confidence_decay":
+
+============================================================
+Case 3: 先例检索 + 影响面分析
+============================================================
+[find_similar_decisions] 返回类型: list
+[
+  {
+    "decision": {
+      "id": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+      "category": "dosage_adjustment",
+      "scenario": "INR monitoring plan for P-4821",
+      "reasoning": "Reduce warfarin dose per interaction severity; recheck INR in 5 days",
+      "outcome": "dose_reduced_30pct",
+      "confidence": 0.87,
+      "entities": [],
+      "decision_maker": null,
+      "timestamp": 1787054969.976804,
+      "recorded_at": "2026-08-18T12:09:29.976807",
+      "valid_from": null,
+      "valid_until": null,
+      "metadata": {
+        "patient_id": "P-4821"
+      }
+    },
+    "similarity": 0.38749999999999996,
+    "content_similarity": 0.125,
+    "structural_similarity": 1.0
+  },
+  {
+    "decision": {
+      "id": "c2a3780a-099c-498c-a4d8-0d3d779c43ae",
+      "category": "drug_interacti
+[analyze_decision_impact(d2)] 返回类型: dict
+{
+  "decision_id": "5d34b8b0-aa21-44b7-bd20-c906dacec1bc",
+  "direct_influence": [
+    {
+      "decision_id": "c2a3780a-099c-498c-a4d8-0d3d779c43ae",
+      "scenario": "Patient P-4821: warfarin + amiodarone co-prescribed",
+      "outcome": "flag_for_review",
+      "category": "drug_interaction_check"
+    },
+    {
+      "decision_id": "32d37cd4-bb5e-48f0-b378-66649e810a4b",
+      "scenario": "Follow-up visit for P-4821 after dose change",
+      "outcome": "scheduled_day5",
+      "category": "followup_schedule"
+    }
+  ],
+  "indirect_influence": [],
+  "influence_scores": [
+    {
+      "decision_id": "32d37cd4-bb5e-48f0-b378-66649e810a4b",
+      "scenario": "Follow-up visit for P-4821 after dose change",
+      "outcome": "scheduled_day5",
+      "category": "followup_schedule",
+      "score": 
+🔄 Semantica is building: Calculating degree centrality 🧠 kg CentralityCalculator |░░░░░░░░░░░░░░░| 0.0% ETA: - Rate: - Time: 0.00s Extracted: -[get_decision_insights] 返回类型: dict
+{
+  "total_decisions": 3,
+  "categories": {
+    "drug_interaction_check": 1,
+    "dosage_adjustment": 1,
+    "followup_schedule": 1
+  },
+  "outcomes": {
+    "flag_for_review": 1,
+    "dose_reduced_30pct": 1,
+    "scheduled_day5": 1
+  },
+  "confidence_stats": {
+    "mean": 0.91,
+    "min": 0.87,
+    "max": 0.95,
+    "median": 0.91
+  },
+  "advanced_analytics": {
+    "graph_metrics": {
+      "node_count": 11,
+      "edge_count": 10,
+      "node_types": {
+        "Organization": 1,
+        "Person": 2,
+        "Contract": 2,
+        "decision": 3,
+        "category": 3
+      },
+      "edge_types": {
+        "works_for": 2,
+        "party_to": 2,
+        "reviewed": 1,
+        "belongs_to": 3,
+        "CAUSED": 1,
+        "INFLUENCED": 1
+      }
+    },
+    "centrality_analysis": {
+      "centra
+
+============================================================
+Case 4: AgentContext —— Agent 记忆工作流 (语义检索)
+============================================================
+🔄 Semantica is processing: Storing memory: Alice approved the Acme renewal in Q1 2024... 🔗 context AgentMemory |░░░░░░░░░░░░░░░| 0.0% ETA: - Rate: - Time: 0.00s Extracted: -Failed to store in vector store: 
+Failed to store in vector store: 
+Failed to store in vector store: 
+Vector retrieval failed: 
+Vector retrieval failed: 
+✅ Semantica is embedding: Generated embedding (dim: 384) 💾 embeddings TextEmbedder |███████████████| 100.0% ETA: - Rate: - Time: 0.02s Extracted: -[retrieve] 返回类型: list
+[
+  {
+    "content": "acme_corp",
+    "score": 0.32816404366493224,
+    "source": "graph:acme_corp",
+    "metadata": {
+      "node_type": "Organization",
+      "node_id": "acme_corp"
+    },
+    "related_entities": [
+      {
+        "id": "contract_001",
+        "type": "Contract",
+        "content": "contract_001",
+        "relationship": "party_to",
+        "weight": 1.0,
+        "hop": 1
+      },
+      {
+        "id": "contract_002",
+        "type": "Contract",
+        "content": "contract_002",
+        "relationship": "party_to",
+        "weight": 1.0,
+        "hop": 1
+      }
+    ]
+  }
+]
+
+============================================================
+Case 5: 图导出 (RDF/turtle) —— 可交监管的机器可读格式
+============================================================
+[RDF 导出] semantica_demo.ttl 共 2107 字符, 前 600 字符:
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix semantica: <https://semantica.dev/ns#> .
+
+<acme_corp> a <Organization> ;
+    semantica:text "acme_corp" ;
+    semantica:confidence 1.0 .
+
+<alice_chen> a <Person> ;
+    semantica:text "alice_chen" ;
+    semantica:confidence 1.0 .
+
+<bob_wang> a <Person> ;
+    semantica:text "bob_wang" ;
+    semantica:confidence 1.0 .
+
+<contract_001> a <Contract> ;
+    semantica:text "contract_001" ;
+    semantica:confidence 1.0 .
+
+<contract_002> a <Contract> ;
+    semantica:text "contract_002" 
+
+============================================================
+Case 6: PROV-O 溯源导出 —— 决策的完整监管证据链
+============================================================
+[PROV-O turtle] 共 1911 字符, 前 800 字符:
+@prefix ex: <https://semantica.dev/ns#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:5d34b8b0-aa21-44b7-bd20-c906dacec1bc a prov:Entity ;
+    prov:generatedAtTime "2026-08-18T12:09:30.275754"^^xsd:dateTime ;
+    prov:qualifiedAssociation [ a prov:Association ;
+            prov:agent ex:semantica ;
+            prov:hadRole ex:role_generator ] ;
+    prov:qualifiedGeneration [ a prov:Generation ;
+            prov:activity ex:entity_tracking ;
+            prov:atTime "2026-08-18T12:09:30.275754"^^xsd:dateTime ] ;
+    prov:wasAttributedTo ex:semantica ;
+    prov:wasGeneratedBy ex:entity_tracking .
+
+ex:c2a3780a-099c-498c-a4d8-0d3d779c43ae a prov:Entity ;
+    prov:generatedAtTime "2026-08-18T12:09:30.275658"^^xsd:dateTime ;
+    prov:qualifi
+[统计] {
+  "total_entries": 3,
+  "entity_types": {
+    "entity": 2,
+    "relationship": 1
+  },
+  "unique_sources": 3
+}
+
+ALL CASES DONE
