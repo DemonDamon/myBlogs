@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "lastScan": "2026-08-19T02:02:55.638Z",
+  "files": [
+    {
+      "relativePath": "src/api.ts",
+      "sha256": "007049492ef7856c47deec8a4fafaf5c3b1984b0141a1acc7c749917a33a19e8",
+      "language": "typescript"
+    },
+    {
+      "relativePath": "src/repository.ts",
+      "sha256": "c3c8b914dc48165642bd39330a6725ae9dd9e3beeb3aa968f8230184ff0d3e85",
+      "language": "typescript"
+    },
+    {
+      "relativePath": "src/service.ts",
+      "sha256": "b538e80dcdeccec14924d25dbb6963fa4e55dc35e00ef6de2868ba381a9ed082",
+      "language": "typescript"
+    },
+    {
+      "relativePath": "src/types.ts",
+      "sha256": "aff16d74a3085711be607541a17fd6d6644f9cbb498feee18195e2706eb5ad76",
+      "language": "typescript"
+    }
+  ],
+  "headSha": "60f11948a12e4dce8d5ac1fbce438e90729eb2c9"
+}

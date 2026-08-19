@@ -1,0 +1,143 @@
+version: 2
+env:
+  TEAMAI_TEST_TOKEN:
+    secret: ${TEAMAI_TEST_TOKEN_SECRET}
+  TEAMAI_TEST_REPO_URL:
+    secret: ${TEAMAI_TEST_REPO_URL_SECRET}
+  NPM_USERNAME: ${NPM_USERNAME}
+  NPM_TOKEN:
+    secret: ${NPM_TOKEN_SECRET}
+stages:
+- stage: validate
+  tasks:
+  - task: lint-and-test
+    artifacts:
+    - coverage/cobertura-coverage.xml
+    cmds:
+    - plugin: cmds
+      params:
+        cmds:
+        - node --version && npm --version
+        - npm ci --ignore-scripts
+        - echo "=== Lint (typecheck) ==="
+        - npx tsc --noEmit
+        - echo "=== Unit Tests + Coverage ==="
+        - npx vitest run --coverage
+- stage: build
+  tasks:
+  - task: build
+    artifacts:
+    - dist/
+    cmds:
+    - plugin: cmds
+      params:
+        cmds:
+        - echo "=== Build ==="
+        - npm ci --ignore-scripts
+        - npm run build
+- stage: e2e
+  tasks:
+  - task: e2e
+    cmds:
+    - plugin: cmds
+      params:
+        cmds:
+        - echo "=== E2E Tests ==="
+        - npm ci --ignore-scripts
+        - npm run build
+        - |
+          # CI commits (tags add/remove, env add/remove, source roundtrip 等
+          # 测试会改写 fixture 仓工作树) 需要 git identity，否则 git 会拒绝。
+          git config --global user.email "ci@teamai.test"
+          git config --global user.name "TeamAI CI"
+        - |
+          # 准备 teamai 远程 e2e 测试 fixture（user-scope ~/.teamai）。
+          # 没配 secrets 时（如 fork 仓的 PR）跳过，e2e.test.ts 里 skipIf
+          # 会把 remote 用例自动跳过。
+          if [ -n "$TEAMAI_TEST_TOKEN" ] && [ -n "$TEAMAI_TEST_REPO_URL" ]; then
+            echo "Setting up teamai for remote E2E tests..."
+            mkdir -p ~/.teamai
+            REPO_LOCAL=~/.teamai/team-repo
+            if [ ! -d "$REPO_LOCAL" ]; then
+              case "$TEAMAI_TEST_REPO_URL" in
+                http://*|https://*) CLONE_URL="$TEAMAI_TEST_REPO_URL";;
+                *) CLONE_URL="https://git.woa.com/${TEAMAI_TEST_REPO_URL}.git";;
+              esac
+              git clone -c "http.extraHeader=PRIVATE-TOKEN: $TEAMAI_TEST_TOKEN" \
+                "$CLONE_URL" "$REPO_LOCAL" || { echo "Clone failed"; exit 1; }
+            fi
+            cat > ~/.teamai/config.yaml <<EOFCFG
+          repo:
+            localPath: "$REPO_LOCAL"
+            remote: "$TEAMAI_TEST_REPO_URL"
+          username: ci
+          updatePolicy: auto
+          EOFCFG
+            echo "teamai config ready"
+          fi
+        - npx vitest run --config vitest.e2e.config.ts --reporter=verbose
+- stage: publish
+  tasks:
+  - task: publish
+    cmds:
+    - plugin: cmds
+      params:
+        cmds:
+        - echo "=== Publish to tnpm (internal mirror) ==="
+        - "if [ \"$QCI_TRIGGER_TYPE\" != \"TRIGGER_TAG\" ]; then\n  echo \"⏭  Not a\
+          \ tag build (trigger=$QCI_TRIGGER_TYPE), skipping publish\"\n  exit 0\n\
+          fi\n"
+        # The public package name is `teamai-cli` on npmjs.org.
+        # For the internal tnpm mirror we publish under the scoped name `@tencent/teamai-cli`.
+        - "npm pkg set name=@tencent/teamai-cli"
+        - "PKG_VERSION=$(node -p \"require('./package.json').version\")\nif npm view\
+          \ \"@tencent/teamai-cli@${PKG_VERSION}\" version --registry http://r.tnpm.oa.com\
+          \ 2>/dev/null; then\n  echo \"ERROR: @tencent/teamai-cli@${PKG_VERSION}\
+          \ is already published.\"\n  exit 1\nfi\n"
+        - "echo \"//r.tnpm.oa.com/:_auth=$(echo -n \"${NPM_USERNAME}:${NPM_TOKEN}\" | base64)\" > .npmrc"
+        - npm ci --ignore-scripts
+        - npm run build
+        - npm publish --registry http://r.tnpm.oa.com
+        - rm -f .npmrc
+trigger:
+  branches:
+    include:
+    - main
+  tags:
+    include:
+    - /^v\d+\.\d+\.\d+/
+mr:
+  branches:
+    include:
+    - main
+  is_block_mr: 0
+finally:
+  failure:
+    cmds:
+    - plugin: cmds
+      params:
+        cmds:
+        - echo "CI pipeline 失败!"
+        - |
+          # e2e fixture 仓清理：失败可能在 fixture 仓工作树留下 dirty state，
+          # 下次跑会卡住。守卫 [ -d ... ] 兜底其他 stage 失败时仓库不存在的情况。
+          REPO_LOCAL=~/.teamai/team-repo
+          if [ -d "$REPO_LOCAL/.git" ]; then
+            echo "Cleaning up e2e fixture repo state..."
+            cd "$REPO_LOCAL"
+            git reset --hard HEAD || true
+            git clean -fdx || true
+          fi
+notifications:
+- name: TeamAI CLI CI 通知
+  channel: ENWECHAT
+  group: QCI_JOB_ADMIN
+  on_success: change
+  on_failure: always
+maximum_builds: 1
+is_no_revert: 0
+is_auto_cancel: 1
+worker:
+  label: JOB_MATRIX_DEVCLOUD
+  tools: []
+  language: node_js-22.19.0

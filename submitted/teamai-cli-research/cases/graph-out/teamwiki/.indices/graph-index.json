@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "team-wiki.graph-index.v1",
+  "generatedAt": "2026-08-19T02:02:55.636Z",
+  "nodes": [
+    {
+      "slug": "interface/OrderApiClient",
+      "type": "interface",
+      "confidence": "EXTRACTED",
+      "title": "OrderApiClient",
+      "domain": "src"
+    },
+    {
+      "slug": "component/HttpOrderApiClient",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "HttpOrderApiClient",
+      "domain": "src"
+    },
+    {
+      "slug": "component/OrderRepository",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "OrderRepository",
+      "domain": "src"
+    },
+    {
+      "slug": "component/OrderService",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "OrderService",
+      "domain": "src"
+    },
+    {
+      "slug": "interface/Order",
+      "type": "interface",
+      "confidence": "EXTRACTED",
+      "title": "Order",
+      "domain": "src"
+    },
+    {
+      "slug": "interface/OrderStatus",
+      "type": "interface",
+      "confidence": "EXTRACTED",
+      "title": "OrderStatus",
+      "domain": "src"
+    },
+    {
+      "slug": "evidence/code/sample-project/index",
+      "type": "architecture",
+      "confidence": "EXTRACTED",
+      "title": "sample-project code index",
+      "domain": "code-knowledge"
+    },
+    {
+      "slug": "evidence/code/sample-project/interface",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "interface",
+      "domain": "code-knowledge"
+    },
+    {
+      "slug": "evidence/code/sample-project/component",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "component",
+      "domain": "code-knowledge"
+    },
+    {
+      "slug": "evidence/code/sample-project/relation-src",
+      "type": "component",
+      "confidence": "EXTRACTED",
+      "title": "relation-src",
+      "domain": "code-knowledge"
+    }
+  ],
+  "edges": [
+    {
+      "from": "src/api.ts",
+      "to": "src/types.ts",
+      "relation": "DEPENDS_ON",
+      "weight": 0.8,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "src/repository.ts",
+      "to": "src/types.ts",
+      "relation": "DEPENDS_ON",
+      "weight": 0.8,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "src/service.ts",
+      "to": "src/repository.ts",
+      "relation": "DEPENDS_ON",
+      "weight": 0.8,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "src/service.ts",
+      "to": "src/api.ts",
+      "relation": "DEPENDS_ON",
+      "weight": 0.8,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "src/service.ts",
+      "to": "src/types.ts",
+      "relation": "DEPENDS_ON",
+      "weight": 0.8,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "evidence/code/sample-project/index",
+      "to": "evidence/code/sample-project/interface",
+      "relation": "CONTAINS",
+      "weight": 0.6,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "evidence/code/sample-project/index",
+      "to": "evidence/code/sample-project/component",
+      "relation": "CONTAINS",
+      "weight": 0.6,
+      "source": "code-heuristic"
+    },
+    {
+      "from": "evidence/code/sample-project/index",
+      "to": "evidence/code/sample-project/relation-src",
+      "relation": "CONTAINS",
+      "weight": 0.6,
+      "source": "code-heuristic"
+    }
+  ]
+}

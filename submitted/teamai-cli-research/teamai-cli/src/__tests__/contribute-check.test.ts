@@ -1,0 +1,855 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {
+  readContributeState,
+  writeContributeState,
+  computeSmartScore,
+  contributeCheckForSession,
+} from '../contribute-check.js';
+import { appendEvent } from '../dashboard-collector.js';
+import {
+  CONTRIBUTE_BASE_THRESHOLD,
+  CONTRIBUTE_FASTPATH_TTL_MS,
+  CONTRIBUTE_SMART_THRESHOLD,
+} from '../types.js';
+import type { ContributeState, DashboardEvent } from '../types.js';
+
+// ─── Test helpers ──────────────────────────────────────────
+
+function makeTmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'teamai-contribute-test-'));
+}
+
+function makeEvent(overrides: Partial<DashboardEvent> = {}): DashboardEvent {
+  return {
+    type: 'tool_use',
+    timestamp: new Date().toISOString(),
+    sessionId: 'test-session-123',
+    tool: 'claude',
+    ...overrides,
+  };
+}
+
+// ─── contributeState read/write (per-session files) ─────────
+
+describe('contributeState', () => {
+  let tmpDir: string;
+  const originalHome = process.env.HOME;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    process.env.HOME = tmpDir;
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('two sessions read/write without interfering', async () => {
+    const stateA: ContributeState = { contributed: false };
+    await writeContributeState('session-aaa', stateA);
+
+    const stateB: ContributeState = { contributed: true };
+    await writeContributeState('session-bbb', stateB);
+
+    const readA = await readContributeState('session-aaa');
+    expect(readA.contributed).toBe(false);
+
+    const readB = await readContributeState('session-bbb');
+    expect(readB.contributed).toBe(true);
+  });
+
+  it('returns defaults when session file does not exist', async () => {
+    const state = await readContributeState('nonexistent-session');
+    expect(state).toEqual({ contributed: false });
+  });
+
+  it('returns defaults when session file contains corrupted JSON', async () => {
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionsDir, 'broken-session.json'), '{not valid!!!}', 'utf-8');
+
+    const state = await readContributeState('broken-session');
+    expect(state).toEqual({ contributed: false });
+  });
+
+  it('backward compat: legacy fields ignored, modern fields preserved', async () => {
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    // Legacy `evaluated: boolean` is ignored (we use `lastEvaluated: number` now);
+    // `toolCount` is still meaningful and is preserved.
+    fs.writeFileSync(
+      path.join(sessionsDir, 'legacy-session.json'),
+      JSON.stringify({ toolCount: 50, evaluated: true, contributed: true, smartScore: 42 }),
+      'utf-8',
+    );
+
+    const state = await readContributeState('legacy-session');
+    expect(state.contributed).toBe(true);
+    expect(state.smartScore).toBe(42);
+    expect(state.toolCount).toBe(50);
+    expect(state.lastEvaluated).toBeUndefined();
+  });
+
+  it('round-trip: write→read preserves score, friction, prompt context, and hint state', async () => {
+    const original: ContributeState = {
+      contributed: false,
+      smartScore: 42,
+      toolCount: 25,
+      lastEvaluated: 1234567890,
+      hinted: true,
+      friction: { interrupt: 1, toolReject: 0, correction: 2, toolError: 3 },
+      promptSummary: 'Fix auth retry handling',
+    };
+    await writeContributeState('rt-session', original);
+    const read = await readContributeState('rt-session');
+    expect(read).toEqual(original);
+  });
+
+  it('sanitizes, flattens, and truncates promptSummary before persisting it', async () => {
+    const rawToken = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    await writeContributeState('safe-prompt-session', {
+      contributed: false,
+      promptSummary: `  Fix auth with ${rawToken}\nthen\tadd\u0000coverage ${'x'.repeat(200)}`,
+    });
+
+    const statePath = path.join(tmpDir, '.teamai', 'sessions', 'safe-prompt-session.json');
+    const persisted = JSON.parse(fs.readFileSync(statePath, 'utf-8')) as ContributeState;
+    expect(persisted.promptSummary).toContain('<REDACTED:gh_tok>');
+    expect(persisted.promptSummary).not.toContain(rawToken);
+    expect(persisted.promptSummary).not.toMatch(/[\r\n\t\u0000]/);
+    expect(persisted.promptSummary).toHaveLength(160);
+    expect(persisted.promptSummary).toMatch(/…$/);
+    expect(await readContributeState('safe-prompt-session')).toEqual(persisted);
+  });
+
+  it('does not split a surrogate pair at the promptSummary truncation boundary', async () => {
+    const prefix = 'x'.repeat(158);
+    await writeContributeState('unicode-prompt-session', {
+      contributed: false,
+      promptSummary: `${prefix}😀 more text`,
+    });
+
+    const state = await readContributeState('unicode-prompt-session');
+    expect(state.promptSummary).toBe(`${prefix}…`);
+    expect(Buffer.from(state.promptSummary!, 'utf8').toString('utf8')).toBe(state.promptSummary);
+  });
+
+  it('appends an ellipsis when truncation clips a redaction marker', async () => {
+    const rawToken = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    await writeContributeState('truncated-redaction-session', {
+      contributed: false,
+      promptSummary: `${'x'.repeat(150)} ${rawToken} more text`,
+    });
+
+    const state = await readContributeState('truncated-redaction-session');
+    expect(state.promptSummary).toContain('<REDACT');
+    expect(state.promptSummary).not.toContain('<REDACTED:gh_tok>');
+    expect(state.promptSummary).not.toContain(rawToken);
+    expect(state.promptSummary).toMatch(/…$/);
+    expect(state.promptSummary!.length).toBeLessThanOrEqual(160);
+  });
+
+  it('rejects malformed types: non-number toolCount/lastEvaluated falls back to undefined', async () => {
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionsDir, 'malformed-session.json'),
+      JSON.stringify({
+        contributed: false,
+        toolCount: 'not-a-number',
+        lastEvaluated: { weird: 'object' },
+        hinted: 'truthy-string',
+        friction: { interrupt: 1, toolReject: 0, correction: -1, toolError: '8' },
+      }),
+      'utf-8',
+    );
+
+    const state = await readContributeState('malformed-session');
+    expect(state.toolCount).toBeUndefined();
+    expect(state.lastEvaluated).toBeUndefined();
+    expect(state.hinted).toBeUndefined();
+    expect(state.friction).toBeUndefined();
+  });
+
+  it('cleans up session files older than 24 hours on write', async () => {
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+
+    const oldFile = path.join(sessionsDir, 'old-session.json');
+    fs.writeFileSync(oldFile, JSON.stringify({ contributed: false }));
+    const pastTime = Date.now() - 25 * 60 * 60 * 1000;
+    fs.utimesSync(oldFile, new Date(pastTime), new Date(pastTime));
+
+    const recentFile = path.join(sessionsDir, 'recent-session.json');
+    fs.writeFileSync(recentFile, JSON.stringify({ contributed: false }));
+
+    await writeContributeState('new-session', { contributed: false });
+
+    expect(fs.existsSync(oldFile)).toBe(false);
+    expect(fs.existsSync(recentFile)).toBe(true);
+    expect(fs.existsSync(path.join(sessionsDir, 'new-session.json'))).toBe(true);
+  });
+});
+
+// ─── computeSmartScore ─────────────────────────────────────
+
+describe('computeSmartScore (friction model)', () => {
+  const noFriction = { interrupt: 0, toolReject: 0, correction: 0, toolError: 0 };
+
+  it('returns 0 for empty events', () => {
+    expect(computeSmartScore([])).toBe(0);
+  });
+
+  it('scores low for a large but frictionless session (scale never triggers alone)', () => {
+    // 50 diverse tool calls, no interrupts/rejects/corrections/errors.
+    const now = Date.now();
+    const tools = ['Bash', 'Read', 'Edit', 'Grep', 'Write'];
+    const events = Array.from({ length: 50 }, (_, i) =>
+      makeEvent({ toolName: tools[i % 5], timestamp: new Date(now - (50 - i) * 1000).toISOString() }),
+    );
+    const score = computeSmartScore(events, noFriction);
+    // Only the scale nudge (diversity ≤5 + no skill) — must stay well below threshold.
+    expect(score).toBeLessThan(CONTRIBUTE_SMART_THRESHOLD);
+    expect(score).toBeLessThanOrEqual(10);
+  });
+
+  it('a single user interrupt lands at/above threshold', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    const score = computeSmartScore(events, { ...noFriction, interrupt: 1 });
+    expect(score).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+  });
+
+  it('a single tool rejection lands at/above threshold', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    const score = computeSmartScore(events, { ...noFriction, toolReject: 1 });
+    expect(score).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+  });
+
+  it('a single correction lands at/above threshold', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    const score = computeSmartScore(events, { ...noFriction, correction: 1 });
+    expect(score).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+  });
+
+  it('tool errors score on a gradient (more struggle → more points)', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    // Baseline scale nudge with no tool errors, to isolate the gradient delta.
+    const base = computeSmartScore(events, noFriction);
+    const s2 = computeSmartScore(events, { ...noFriction, toolError: 2 });
+    const s3 = computeSmartScore(events, { ...noFriction, toolError: 3 });
+    const s5 = computeSmartScore(events, { ...noFriction, toolError: 5 });
+    const s8 = computeSmartScore(events, { ...noFriction, toolError: 8 });
+    expect(s2).toBe(base); // below the first tier → no extra points
+    expect(s3).toBeGreaterThan(s2);
+    expect(s5).toBeGreaterThan(s3);
+    expect(s8).toBeGreaterThan(s5);
+  });
+
+  it('a struggle-heavy session (8+ tool errors + correction) clears threshold', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    const score = computeSmartScore(events, { ...noFriction, toolError: 8, correction: 1 });
+    expect(score).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+  });
+
+  it('friction accumulates across signal types', () => {
+    const events = [makeEvent({ toolName: 'Bash' })];
+    const score = computeSmartScore(events, { interrupt: 1, toolReject: 1, correction: 1, toolError: 5 });
+    expect(score).toBeGreaterThan(CONTRIBUTE_SMART_THRESHOLD);
+  });
+
+  it('without a friction arg, score reflects only the scale nudge (backward compatible)', () => {
+    const events = [
+      makeEvent({ toolName: 'Bash' }),
+      makeEvent({ toolName: 'Skill' }),
+    ];
+    const score = computeSmartScore(events);
+    expect(score).toBeLessThan(CONTRIBUTE_SMART_THRESHOLD);
+  });
+});
+
+// ─── contributeCheckForSession (Stop hook integration) ─────
+
+/**
+ * Build a high-FRICTION session worth of events on disk.
+ * Score must comfortably clear CONTRIBUTE_SMART_THRESHOLD (35) via friction
+ * signals (a Stop event carrying interventions), not raw tool volume — that is
+ * the point of the friction rewrite. Also seeds enough tool_use events to clear
+ * the toolCount >= CONTRIBUTE_BASE_THRESHOLD hard gate.
+ */
+async function seedHighScoreSession(
+  sessionId: string,
+  opts?: {
+    count?: number;
+    promptSummary?: string;
+    interventions?: { interrupt: number; toolReject: number; toolError?: number };
+  },
+): Promise<void> {
+  const count = opts?.count ?? 50;
+  const now = Date.now();
+  const tools = ['Bash', 'Read', 'Edit', 'Skill', 'Grep'];
+  if (opts?.promptSummary) {
+    await appendEvent({
+      type: 'prompt_submit',
+      sessionId,
+      tool: 'claude',
+      promptSummary: opts.promptSummary,
+      timestamp: new Date(now - ((count + 1) * 60 * 1000)).toISOString(),
+    });
+  }
+  for (let i = 0; i < count; i++) {
+    await appendEvent({
+      type: 'tool_use',
+      sessionId,
+      tool: 'claude',
+      toolName: tools[i % tools.length],
+      timestamp: new Date(now - ((count - i) * 60 * 1000)).toISOString(),
+    });
+  }
+  // Friction snapshot at Stop: 2 interrupts + 8 tool errors → well above threshold.
+  await appendEvent({
+    type: 'stop',
+    sessionId,
+    tool: 'claude',
+    timestamp: new Date(now).toISOString(),
+    interventions: opts?.interventions ?? { interrupt: 2, toolReject: 0, toolError: 8 },
+  });
+}
+
+describe('contributeCheckForSession', () => {
+  let tmpDir: string;
+  const originalHome = process.env.HOME;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    process.env.HOME = tmpDir;
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('fast-path: low toolCount + fresh cache → no hint, no events read, state untouched', async () => {
+    const sessionId = 'fp-fresh';
+    const initialState: ContributeState = {
+      contributed: false,
+      toolCount: CONTRIBUTE_BASE_THRESHOLD - 1,
+      lastEvaluated: Date.now(),
+      smartScore: 5,
+    };
+    await writeContributeState(sessionId, initialState);
+
+    // Seed events that *would* score high if read — but fast-path should skip.
+    await seedHighScoreSession(sessionId);
+
+    const before = await readContributeState(sessionId);
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).toBeNull();
+    // Proof that events were not read & re-scored: state is unchanged.
+    expect(after.toolCount).toBe(before.toolCount);
+    expect(after.lastEvaluated).toBe(before.lastEvaluated);
+    expect(after.smartScore).toBe(before.smartScore);
+  });
+
+  it('fast-path expires: low toolCount + STALE cache → re-evaluate (state updated)', async () => {
+    const sessionId = 'fp-stale';
+    // Snapshot far outside the debounce window (much older than 5 min).
+    const veryOld = Date.now() - CONTRIBUTE_FASTPATH_TTL_MS - 60 * 60 * 1000;
+    await writeContributeState(sessionId, {
+      contributed: false,
+      toolCount: CONTRIBUTE_BASE_THRESHOLD - 1,
+      lastEvaluated: veryOld,
+      smartScore: 5,
+    });
+    await seedHighScoreSession(sessionId);
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    // Re-evaluation happened: lastEvaluated advanced, toolCount reflects real events,
+    // and the high-scoring session produced a hint.
+    expect(after.lastEvaluated).toBeGreaterThan(veryOld);
+    expect(after.toolCount).toBeGreaterThanOrEqual(50);
+    expect(after.smartScore).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+    expect(result.hint).not.toBeNull();
+  });
+
+  // Regression: a stale toolCount=0 snapshot must not suppress evaluation
+  // once it falls outside the debounce window.
+  it('fast-path debounce: low-toolCount snapshot older than 5min → re-evaluate (regression)', async () => {
+    const sessionId = 'fp-debounce-expired';
+    const tenMinAgo = Date.now() - CONTRIBUTE_FASTPATH_TTL_MS - 5 * 60 * 1000;
+    await writeContributeState(sessionId, {
+      contributed: false,
+      toolCount: 0,                    // snapshot captured before tools ran
+      lastEvaluated: tenMinAgo,        // 10 min ago — past the 5-min debounce
+      smartScore: 0,
+    });
+    await seedHighScoreSession(sessionId);
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(after.toolCount).toBeGreaterThanOrEqual(50);
+    expect(after.smartScore).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+    expect(result.hint).not.toBeNull();
+  });
+
+  // Regression: even when all score/context fields are present in state, they
+  // must not be reused as a "cache hit" past the debounce window — Layer 2 now
+  // shares the same debounce as Layer 1.
+  it('layer-2 cache-hit expiry: stale (smartScore=0, toolCount=0) past debounce → re-scan events', async () => {
+    const sessionId = 'l2-cache-stale';
+    const tenMinAgo = Date.now() - CONTRIBUTE_FASTPATH_TTL_MS - 5 * 60 * 1000;
+    await writeContributeState(sessionId, {
+      contributed: false,
+      toolCount: 0,
+      uniqueTools: 0,
+      smartScore: 0,
+      lastEvaluated: tenMinAgo,
+      friction: { interrupt: 0, toolReject: 0, correction: 0, toolError: 0 },
+    });
+    await seedHighScoreSession(sessionId);
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    // Must have re-scanned events, not reused the stale (score=0) cache.
+    expect(after.toolCount).toBeGreaterThanOrEqual(50);
+    expect(after.smartScore).toBeGreaterThan(0);
+    expect(after.smartScore).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+    expect(result.hint).not.toBeNull();
+  });
+
+  it('cache hit: high cached score + fresh friction context → reuse cache, emit contextual hint', async () => {
+    const sessionId = 'cache-hit';
+    const now = Date.now();
+    await writeContributeState(sessionId, {
+      contributed: false,
+      toolCount: 100,
+      uniqueTools: 7,
+      lastEvaluated: now,
+      smartScore: 80,
+      friction: { interrupt: 1, toolReject: 2, correction: 0, toolError: 3 },
+      promptSummary: 'Fix cached auth task',
+    });
+    await seedHighScoreSession(sessionId);
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).not.toBeNull();
+    // Hint message uses cached explanation context (not recomputed from events).
+    expect(result.hint).toContain('you interrupted the AI once');
+    expect(result.hint).toContain('you rejected 2 tool calls');
+    expect(result.hint).not.toContain('you corrected the AI');
+    expect(result.hint).toContain('the AI retried failing tools 3 times');
+    expect(result.hint).toContain('Task: Fix cached auth task');
+    expect(result.hint).not.toContain('100 tool calls');
+    expect(result.hint).not.toContain('7 different tools');
+    // Cached score preserved
+    expect(after.smartScore).toBe(80);
+    expect(after.toolCount).toBe(100);
+    expect(after.uniqueTools).toBe(7);
+    expect(after.friction).toEqual({ interrupt: 1, toolReject: 2, correction: 0, toolError: 3 });
+    expect(after.promptSummary).toBe('Fix cached auth task');
+    // lastEvaluated unchanged on cache hit + only-hinted-flag write
+    expect(after.lastEvaluated).toBe(now);
+    expect(after.hinted).toBe(true);
+  });
+
+  it('hint dedup: once hinted=true, subsequent calls return null even with fresh cache', async () => {
+    const sessionId = 'dedup';
+    await writeContributeState(sessionId, {
+      contributed: false,
+      toolCount: 100,
+      lastEvaluated: Date.now(),
+      smartScore: 80,
+      hinted: true,
+    });
+    await seedHighScoreSession(sessionId);
+
+    const result = await contributeCheckForSession(sessionId);
+    expect(result.hint).toBeNull();
+  });
+
+  it('contributed=true short-circuits before any I/O', async () => {
+    const sessionId = 'contributed';
+    await writeContributeState(sessionId, { contributed: true });
+
+    const result = await contributeCheckForSession(sessionId);
+    expect(result.hint).toBeNull();
+  });
+
+  it('first run on empty state: no cache → reads events, persists toolCount/lastEvaluated/smartScore', async () => {
+    const sessionId = 'first-run';
+    await seedHighScoreSession(sessionId, { promptSummary: 'Fix first-run cache state' });
+
+    const before = await readContributeState(sessionId);
+    expect(before.lastEvaluated).toBeUndefined();
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).not.toBeNull();
+    expect(after.lastEvaluated).toBeDefined();
+    expect(after.toolCount).toBeGreaterThan(0);
+    expect(after.smartScore).toBeGreaterThanOrEqual(CONTRIBUTE_SMART_THRESHOLD);
+    expect(after.friction).toEqual({ interrupt: 2, toolReject: 0, correction: 0, toolError: 8 });
+    expect(after.promptSummary).toBe('Fix first-run cache state');
+    expect(after.hinted).toBe(true);
+  });
+
+  it('M3: cache hit emits hint WITHOUT reading events.jsonl (context from cache)', async () => {
+    const sessionId = 'cache-no-events';
+    const now = Date.now();
+    // Cache fully primed
+    await writeContributeState(sessionId, {
+      contributed: false,
+      smartScore: 80,
+      toolCount: 42,
+      uniqueTools: 9,
+      lastEvaluated: now,
+      friction: { interrupt: 2, toolReject: 0, correction: 1, toolError: 8 },
+      promptSummary: 'Repair the cached hook state',
+    });
+    // Intentionally do NOT seed any events; no file at all.
+    // If the implementation tried to readEvents() it would get [] and
+    // computeSmartScore would yield 0 < threshold → no hint.
+
+    const result = await contributeCheckForSession(sessionId);
+
+    expect(result.hint).not.toBeNull();
+    expect(result.hint).toContain('you interrupted the AI twice');
+    expect(result.hint).toContain('you corrected the AI once');
+    expect(result.hint).toContain('the AI retried failing tools 8 times');
+    expect(result.hint).toContain('Task: Repair the cached hook state');
+    expect(result.hint).not.toContain('42 tool calls');
+    expect(result.hint).not.toContain('9 different tools');
+  });
+
+  it('M3: legacy cache missing friction → falls back to cache miss and migrates state', async () => {
+    const sessionId = 'cache-partial';
+    const now = Date.now();
+    // Legacy state: score/display fields are present, but explanation context is
+    // absent. Code must re-evaluate rather than emit an ungrounded hint.
+    await writeContributeState(sessionId, {
+      contributed: false,
+      smartScore: 80,
+      toolCount: 100,
+      uniqueTools: 7,
+      lastEvaluated: now,
+      // friction intentionally omitted
+    });
+    await seedHighScoreSession(sessionId, { promptSummary: 'Migrate contextual hint state' });
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).not.toBeNull();
+    expect(after.uniqueTools).toBeGreaterThan(0);
+    expect(after.friction).toEqual({ interrupt: 2, toolReject: 0, correction: 0, toolError: 8 });
+    expect(after.promptSummary).toBe('Migrate contextual hint state');
+    expect(result.hint).toContain('you interrupted the AI twice');
+    expect(result.hint).toContain('Task: Migrate contextual hint state');
+    // smartScore is now the freshly computed value, not the legacy 80
+    expect(after.smartScore).not.toBe(80);
+  });
+
+  it('promptSummary is optional and does not cause a permanent cache miss', async () => {
+    const sessionId = 'cache-without-prompt';
+    await writeContributeState(sessionId, {
+      contributed: false,
+      smartScore: 80,
+      toolCount: 42,
+      lastEvaluated: Date.now(),
+      friction: { interrupt: 1, toolReject: 0, correction: 0, toolError: 0 },
+      // promptSummary intentionally omitted (some tools cannot provide one)
+    });
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).toContain('you interrupted the AI once');
+    expect(result.hint).not.toContain('Task:');
+    expect(after.smartScore).toBe(80);
+  });
+
+  it('malformed cached friction is rejected and rebuilt from events', async () => {
+    const sessionId = 'cache-malformed-friction';
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionsDir, `${sessionId}.json`),
+      JSON.stringify({
+        contributed: false,
+        smartScore: 80,
+        toolCount: 100,
+        lastEvaluated: Date.now(),
+        friction: { interrupt: 1, toolReject: 0, correction: 'bad', toolError: 8 },
+        promptSummary: 'Stale cached task',
+      }),
+      'utf-8',
+    );
+    await seedHighScoreSession(sessionId, { promptSummary: 'Fresh task from events' });
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(after.friction).toEqual({ interrupt: 2, toolReject: 0, correction: 0, toolError: 8 });
+    expect(after.promptSummary).toBe('Fresh task from events');
+    expect(after.smartScore).not.toBe(80);
+    expect(result.hint).toContain('Task: Fresh task from events');
+  });
+
+  it('explains every non-zero friction signal and safely includes the first task', async () => {
+    const sessionId = 'contextual-reasons';
+    const rawToken = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    await seedHighScoreSession(sessionId, {
+      promptSummary: `Fix auth retry for ${rawToken}\nthen add regression coverage`,
+      interventions: { interrupt: 2, toolReject: 1, toolError: 8 },
+    });
+    await appendEvent({
+      type: 'prompt_submit',
+      sessionId,
+      tool: 'claude',
+      promptSummary: 'wrong, redo it',
+      timestamp: new Date(Date.now() + 1000).toISOString(),
+    });
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).toContain('you interrupted the AI twice');
+    expect(result.hint).toContain('you rejected 1 tool call');
+    expect(result.hint).toContain('you corrected the AI once');
+    expect(result.hint).toContain('the AI retried failing tools 8 times');
+    expect(result.hint).toContain('Task: Fix auth retry for <REDACTED:gh_tok> then add regression coverage');
+    expect(result.hint).not.toContain(rawToken);
+    expect(result.hint).not.toContain('50 tool calls');
+    expect(result.hint).not.toContain('5 different tools');
+    expect(after.friction).toEqual({ interrupt: 2, toolReject: 1, correction: 1, toolError: 8 });
+    expect(after.promptSummary).toBe('Fix auth retry for <REDACTED:gh_tok> then add regression coverage');
+  });
+
+  it('M1: cache miss + high score performs exactly ONE writeContributeState (not two)', async () => {
+    const sessionId = 'cache-miss-one-write';
+    // Fresh session — no prior state; will go through cache-miss + high-score path.
+    await seedHighScoreSession(sessionId);
+
+    // cleanupStaleSessions runs exactly once per writeContributeState and is the
+    // only consumer of fs.promises.readdir on the sessions dir. So the readdir
+    // count on that dir == number of writes.
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    const readdirSpy = vi.spyOn(fs.promises, 'readdir');
+
+    await contributeCheckForSession(sessionId);
+
+    const writesOnSessionsDir = readdirSpy.mock.calls.filter(
+      ([target]) => typeof target === 'string' && target === sessionsDir,
+    );
+    // Pre-fix: 2 writes (smartScore then hinted=true) → 2 readdirs.
+    // Post-fix: 1 combined write → 1 readdir.
+    expect(writesOnSessionsDir.length).toBe(1);
+
+    readdirSpy.mockRestore();
+  });
+
+  it('M1: cache hit + low score performs ZERO writes (state already current)', async () => {
+    const sessionId = 'zero-write';
+    const originalLastEvaluated = Date.now() - 1000;
+    await writeContributeState(sessionId, {
+      contributed: false,
+      smartScore: 5, // below threshold
+      toolCount: 100, // ≥ BASE_THRESHOLD so fast-path doesn't kick
+      uniqueTools: 1,
+      lastEvaluated: originalLastEvaluated,
+      friction: { interrupt: 0, toolReject: 0, correction: 0, toolError: 0 },
+    });
+
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    const readdirSpy = vi.spyOn(fs.promises, 'readdir');
+
+    await contributeCheckForSession(sessionId);
+
+    const writesOnSessionsDir = readdirSpy.mock.calls.filter(
+      ([target]) => typeof target === 'string' && target === sessionsDir,
+    );
+    // Cache hit + low score → no write needed at all.
+    expect(writesOnSessionsDir.length).toBe(0);
+
+    readdirSpy.mockRestore();
+  });
+
+  it('low-score session: events read, score below threshold → no hint, hinted not set', async () => {
+    const sessionId = 'low-score';
+    // Tiny session — single tool, no diversity, no skill/error/duration
+    for (let i = 0; i < 3; i++) {
+      await appendEvent({
+        type: 'tool_use',
+        sessionId,
+        tool: 'claude',
+        toolName: 'Bash',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const result = await contributeCheckForSession(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(result.hint).toBeNull();
+    expect(after.smartScore).toBeLessThan(CONTRIBUTE_SMART_THRESHOLD);
+    expect(after.hinted).toBeUndefined();
+    // toolCount persisted so future fast-path can kick in
+    expect(after.toolCount).toBe(3);
+  });
+});
+
+// ─── Race / dedup edge cases (M2 + L4) ─────────────────────
+
+describe('contributeCheckForSession concurrency safety', () => {
+  let tmpDir: string;
+  const originalHome = process.env.HOME;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    process.env.HOME = tmpDir;
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    vi.restoreAllMocks();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('M2: contributed=true set during evaluation is NOT clobbered by the score write', async () => {
+    const sessionId = 'race-contributed';
+    await writeContributeState(sessionId, { contributed: false });
+    await seedHighScoreSession(sessionId);
+
+    // Inject /contribute racing: between contribute-check's first read and its
+    // write, simulate the user running /contribute (markContributed equivalent).
+    // We hook into readEvents because it's the await between read and write
+    // in the cache-miss path.
+    const dashboardCollector = await import('../dashboard-collector.js');
+    const realReadEvents = dashboardCollector.readEvents;
+    const spy = vi
+      .spyOn(dashboardCollector, 'readEvents')
+      .mockImplementationOnce(async () => {
+        const cur = await readContributeState(sessionId);
+        await writeContributeState(sessionId, { ...cur, contributed: true });
+        return await realReadEvents();
+      });
+
+    await contributeCheckForSession(sessionId);
+    spy.mockRestore();
+
+    const final = await readContributeState(sessionId);
+    expect(final.contributed).toBe(true);
+  });
+
+  it('L4: markContributed preserves hinted flag', async () => {
+    const { markContributed } = await import('../contribute-check.js');
+    const sessionId = 'preserve-hinted';
+    await writeContributeState(sessionId, {
+      contributed: false,
+      hinted: true,
+      smartScore: 80,
+      toolCount: 100,
+      lastEvaluated: Date.now(),
+    });
+
+    await markContributed(sessionId);
+    const after = await readContributeState(sessionId);
+
+    expect(after.contributed).toBe(true);
+    // Crucial: pre-existing fields not wiped
+    expect(after.hinted).toBe(true);
+    expect(after.smartScore).toBe(80);
+    expect(after.toolCount).toBe(100);
+  });
+});
+
+// ─── L2: sessionId path safety ─────────────────────────────
+
+describe('sessionId filesystem safety (L2)', () => {
+  let tmpDir: string;
+  const originalHome = process.env.HOME;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    process.env.HOME = tmpDir;
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('PID-fallback sessionId containing "/" does NOT create nested directories', async () => {
+    // Mirrors the readStdinAndDeriveSession PID fallback shape.
+    const sessionId = 'pid-12345-/Users/jeff/projects/foo';
+
+    await writeContributeState(sessionId, { contributed: false, smartScore: 5 });
+
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    const entries = fs.readdirSync(sessionsDir);
+
+    // Exactly one .json file, no nested directories
+    expect(entries.length).toBe(1);
+    const entry = entries[0];
+    const stat = fs.statSync(path.join(sessionsDir, entry));
+    expect(stat.isFile()).toBe(true);
+    expect(entry.endsWith('.json')).toBe(true);
+    // The file name must not contain a path separator
+    expect(entry.includes('/')).toBe(false);
+    expect(entry.includes(path.sep)).toBe(false);
+  });
+
+  it('round-trips state for a sessionId with "/"', async () => {
+    const sessionId = 'pid-99999-/some/cwd/path';
+    const original: ContributeState = {
+      contributed: false,
+      smartScore: 42,
+      toolCount: 25,
+      lastEvaluated: 1234567890,
+      hinted: true,
+    };
+
+    await writeContributeState(sessionId, original);
+    const read = await readContributeState(sessionId);
+
+    expect(read).toEqual(original);
+  });
+
+  it('cleanupStaleSessions skips the current session even when its filename was sanitized', async () => {
+    const { cleanupStaleSessions } = await import('../contribute-check.js');
+
+    // Raw sessionId with "/" → sanitized to "_" on disk.
+    const sessionId = 'pid-12345-/Users/jeff/proj';
+    await writeContributeState(sessionId, { contributed: false });
+
+    const sessionsDir = path.join(tmpDir, '.teamai', 'sessions');
+    const files = fs.readdirSync(sessionsDir);
+    expect(files.length).toBe(1);
+    const filePath = path.join(sessionsDir, files[0]);
+
+    // Backdate the file to look stale (>24h old). cleanup uses mtime to decide
+    // staleness, but MUST still skip the file because it belongs to the
+    // currently-active session — otherwise a long-running session that has not
+    // re-written its state file in 24h would have its state silently deleted
+    // out from under it.
+    const past = Date.now() - 25 * 60 * 60 * 1000;
+    fs.utimesSync(filePath, new Date(past), new Date(past));
+
+    await cleanupStaleSessions(sessionsDir, sessionId);
+
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+});
